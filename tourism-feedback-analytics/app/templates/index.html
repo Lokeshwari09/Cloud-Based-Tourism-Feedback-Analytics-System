@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tourism Feedback Analytics</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+ body{font-family:system-ui,sans-serif;margin:0;background:#f4f6f8;color:#1f2933}
+ header{background:#0b6e6e;color:#fff;padding:16px 24px}
+ main{max-width:1100px;margin:auto;padding:20px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+ .card{background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px #0002}
+ .wide{grid-column:1/-1} h3{margin:0 0 10px} input,select,textarea,button{width:100%;padding:8px;margin:4px 0;box-sizing:border-box;font:inherit}
+ button{background:#0b6e6e;color:#fff;border:0;border-radius:6px;cursor:pointer}
+ table{width:100%;border-collapse:collapse;font-size:14px} td,th{padding:6px;border-bottom:1px solid #e5e7eb;text-align:left}
+ .positive{color:#15803d}.negative{color:#b91c1c}.neutral{color:#a16207}.tag{background:#e0f2f1;border-radius:10px;padding:1px 8px;margin:2px;font-size:12px;display:inline-block}
+</style></head><body>
+<header><h2 style="margin:0">Cloud-Based Tourism Feedback Analytics</h2><small>Total feedback: <b id="total">0</b></small></header>
+<main>
+ <div class="card"><h3>Submit feedback</h3>
+  <input id="dest" placeholder="Destination (e.g. Munnar)">
+  <select id="rating"><option>5</option><option>4</option><option selected>3</option><option>2</option><option>1</option></select>
+  <textarea id="comment" rows="4" placeholder="Write your experience..."></textarea>
+  <button onclick="submitFb()">Analyze &amp; Save</button><p id="result"></p>
+  <a href="/export.csv">Download CSV</a></div>
+ <div class="card"><h3>Sentiment split</h3><canvas id="c1"></canvas></div>
+ <div class="card"><h3>Avg sentiment by destination</h3><canvas id="c2"></canvas></div>
+ <div class="card"><h3>Avg sentiment by topic</h3><canvas id="c3"></canvas></div>
+ <div class="card"><h3>Top keywords</h3><div id="kw"></div></div>
+ <div class="card wide"><h3>Recent feedback</h3><table><thead><tr><th>Destination</th><th>Rating</th><th>Comment</th><th>Sentiment</th><th>Topics</th></tr></thead><tbody id="rows"></tbody></table></div>
+</main>
+<script>
+const charts={};
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function draw(id,type,labels,data,colors){
+  if(charts[id])charts[id].destroy();
+  charts[id]=new Chart(document.getElementById(id),{type,data:{labels,datasets:[{data,backgroundColor:colors||'#0b6e6e'}]},options:{plugins:{legend:{display:type==='doughnut'}}}});
+}
+async function load(){
+  const s=await (await fetch('/api/stats')).json();
+  document.getElementById('total').textContent=s.total;
+  draw('c1','doughnut',Object.keys(s.sentiment),Object.values(s.sentiment),['#15803d','#eab308','#b91c1c']);
+  draw('c2','bar',Object.keys(s.by_destination),Object.values(s.by_destination));
+  draw('c3','bar',Object.keys(s.by_topic),Object.values(s.by_topic).map(v=>v.avg));
+  document.getElementById('kw').innerHTML=s.keywords.map(k=>`<span class="tag">${esc(k[0])} (${k[1]})</span>`).join('');
+  const r=await (await fetch('/api/feedback')).json();
+  document.getElementById('rows').innerHTML=r.map(x=>`<tr><td>${esc(x.destination)}</td><td>${x.rating}</td><td>${esc(x.comment)}</td><td class="${x.sentiment}">${x.sentiment} (${x.score})</td><td>${x.topics.map(t=>`<span class="tag">${t}</span>`).join('')}</td></tr>`).join('');
+}
+async function submitFb(){
+  const body={destination:dest.value,rating:rating.value,comment:comment.value};
+  const res=await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await res.json();
+  result.textContent=res.ok?`Result: ${j.label} (${j.score}) - ${j.topics.join(', ')}`:j.error;
+  if(res.ok){comment.value='';load();}
+}
+load();
+</script></body></html>
